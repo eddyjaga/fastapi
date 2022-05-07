@@ -1,3 +1,4 @@
+from socketserver import ThreadingUnixDatagramServer
 from time import sleep
 from typing import Optional
 from fastapi import FastAPI, Response, status, HTTPException
@@ -42,7 +43,6 @@ class Post(BaseModel):
     title: str
     content: str
     published: bool = True
-    rating: Optional[int] = None
 
 
 @app.get("/")
@@ -53,16 +53,20 @@ async def root():
 @app.get("/posts")
 async def get_posts():
     posts = cursor.execute("SELECT * FROM posts").fetchall()
-    print(posts)
     return {"data": posts}
 
 
 @app.post("/posts", status_code=status.HTTP_201_CREATED)
 def create_posts(post: Post):
-    post_dict = post.dict()
-    post_dict["id"] = randrange(0, 1000000)
-    my_posts.append(post_dict)
-    return {"data": post_dict}
+    cursor.execute(
+        """INSERT INTO posts (post_title, post_content, published) 
+        VALUES (%s, %s, %s) RETURNING * """, (post.title, post.content, post.published))
+
+    new_post = cursor.fetchone()
+
+    conn.commit()
+
+    return {"data": new_post}
 
 
 @app.get("/posts/latest")
@@ -73,7 +77,8 @@ def get_latest_post():
 
 @app.get("/posts/{id}")
 async def get_post(id: int):
-    post = find_post(id)
+    post = cursor.execute(
+        """ SELECT * FROM posts WHERE post_id = %s """, [id]).fetchone()
     if not post:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="The page not found")
@@ -83,23 +88,24 @@ async def get_post(id: int):
 
 @app.delete("/posts/{id}")
 def delete_post(id: int):
-    index = find_index_post(id)
-    if index == None:
+    deleted_post = cursor.execute(
+        """DELETE FROM posts WHERE post_id =%s RETURNING *""", [id]).fetchone()
+
+    conn.commit()
+
+    if not deleted_post:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="post not found")
-    my_posts.pop(index)
 
     return {"message": "Post was successfully deleted"}
 
 
 @app.put("/posts/{id}")
 def update_post(id: int, post: Post):
-    index = find_index_post(id)
-    if index == None:
+    updated_post = cursor.execute("""UPDATE posts SET post_title = %s, post_content = %s, published = %s WHERE post_id = %s RETURNING *""", [
+                                  post.title, post.content, post.published, id]).fetchone()
+    conn.commit()
+    if not updated_post:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="post not found")
-
-    post_dict = post.dict()
-    post_dict["id"] = id
-    my_posts[index] = post_dict
-    return {"data": post_dict}
+    return {"data": updated_post}
