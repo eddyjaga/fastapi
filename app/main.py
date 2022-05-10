@@ -7,7 +7,7 @@ from random import randrange
 import psycopg
 from psycopg.rows import dict_row
 
-from . import models
+from . import models, schemas
 from .database import engine, get_db
 from sqlalchemy.orm import Session
 
@@ -28,12 +28,6 @@ models.Base.metadata.create_all(bind=engine)
 #         sleep(2)
 
 
-class Post(BaseModel):
-    post_title: str
-    post_content: str
-    published: bool = True
-
-
 @app.get("/")
 async def root():
     return {"message": "Welcome to Fast API"}
@@ -46,7 +40,7 @@ async def get_posts(db: Session = Depends(get_db)):
 
 
 @app.post("/posts", status_code=status.HTTP_201_CREATED)
-def create_posts(post: Post, db: Session = Depends(get_db)):
+def create_posts(post: schemas.Post, db: Session = Depends(get_db)):
     new_post = models.Posts(**post.dict())
     db.add(new_post)
     db.commit()
@@ -78,7 +72,7 @@ def delete_post(id: int, db: Session = Depends(get_db)):
 
 
 @app.put("/posts/{id}")
-def update_post(id: int, post: Post, db: Session = Depends(get_db)):
+def update_post(id: int, post: schemas.Post, db: Session = Depends(get_db)):
     updated_post_query = db.query(models.Posts).filter(
         models.Posts.post_id == id)
 
